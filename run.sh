@@ -35,7 +35,7 @@ if [ "$FAST" = "1" ]; then
   echo "⚡ FAST mode: epochs=$EPOCHS, videos=$N_VIDEOS"
 else
   N_VIDEOS=2000
-  BATCH_SIZE=32
+  BATCH_SIZE=4
 fi
 
 ENV_NAME="slots"

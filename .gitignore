@@ -2,3 +2,4 @@ data/
 __pycache__/
 *.pyc
 *.pth
+Miniconda3-latest-Linux-x86_64.sh
