@@ -113,26 +113,25 @@ def img(x):
 
 def plot_occlusion_comparison(frames, occ_mask, vanilla_masks, temporal_masks,
                                frame_indices, out_path):
-    """
-    For selected frames, show:
-      Row 0: original frame
-      Rows 1..K: vanilla slot masks
-      Rows K+1..2K: temporal slot masks
-    """
     K = vanilla_masks.shape[1]
     n_frames = len(frame_indices)
     slot_colors = ["#FF4444", "#4499FF", "#44FF66", "#FFD700"]
 
-    fig_h = 2 + K * 1.2 * 2
+    fig_h = 2 + K * 1.4 * 2
     fig, axes = plt.subplots(1 + K * 2, n_frames,
-                              figsize=(n_frames * 2, fig_h))
+                              figsize=(n_frames * 2.5, fig_h))
     fig.patch.set_facecolor("#1a1a2e")
+
+    # Compute global vmax across all masks so contrast is consistent
+    all_v = np.concatenate([vanilla_masks[frame_indices].ravel(),
+                            temporal_masks[frame_indices].ravel()])
+    vmax = float(np.percentile(all_v, 99))
+    vmax = max(vmax, 0.01)  # ensure minimum contrast
 
     for col, fi in enumerate(frame_indices):
         frame = img(frames[fi])
-        is_occ = occ_mask[fi, 0]  # object 0 occluded?
+        is_occ = occ_mask[fi, 0]
 
-        # Original frame
         ax = axes[0, col]
         ax.imshow(frame)
         ax.set_xticks([]); ax.set_yticks([])
@@ -140,41 +139,34 @@ def plot_occlusion_comparison(frames, occ_mask, vanilla_masks, temporal_masks,
         if is_occ:
             title += "\n[OCCLUDED]"
             for spine in ax.spines.values():
-                spine.set_edgecolor("red"); spine.set_linewidth(2)
-        ax.set_title(title, color="white", fontsize=8)
+                spine.set_edgecolor("red"); spine.set_linewidth(3)
+        ax.set_title(title, color="white", fontsize=9)
 
-        # Vanilla masks
         for k in range(K):
             ax = axes[1 + k, col]
-            mask = vanilla_masks[fi, k, 0]  # (H, W)
-            ax.imshow(mask, cmap="inferno", vmin=0, vmax=1)
+            mask = vanilla_masks[fi, k, 0]
+            ax.imshow(mask, cmap="hot", vmin=0, vmax=vmax)
             ax.set_xticks([]); ax.set_yticks([])
             if col == 0:
                 ax.set_ylabel(f"V-Slot {k+1}", color=slot_colors[k % len(slot_colors)],
-                              fontsize=7, rotation=0, labelpad=35)
+                              fontsize=7, rotation=0, labelpad=40)
 
-        # Temporal masks
         for k in range(K):
             ax = axes[1 + K + k, col]
             mask = temporal_masks[fi, k, 0]
-            ax.imshow(mask, cmap="inferno", vmin=0, vmax=1)
+            ax.imshow(mask, cmap="hot", vmin=0, vmax=vmax)
             ax.set_xticks([]); ax.set_yticks([])
             if col == 0:
                 ax.set_ylabel(f"T-Slot {k+1}", color=slot_colors[k % len(slot_colors)],
-                              fontsize=7, rotation=0, labelpad=35)
+                              fontsize=7, rotation=0, labelpad=40)
 
-    # Row labels
-    axes[0, 0].set_ylabel("Input", color="white", fontsize=8, rotation=0, labelpad=35)
-
-    # Section labels
+    axes[0, 0].set_ylabel("Input", color="white", fontsize=8, rotation=0, labelpad=40)
     fig.text(0.01, 0.72, "Vanilla\n(no memory)", color="#FF8888",
              fontsize=9, va="center", rotation=90, fontweight="bold")
     fig.text(0.01, 0.30, "Temporal\n(with memory)", color="#88FF88",
              fontsize=9, va="center", rotation=90, fontweight="bold")
-
-    fig.suptitle("Slot Attention: Vanilla vs Temporal Propagation\nunder Occlusion",
+    fig.suptitle("Slot Attention: Vanilla vs Temporal Propagation under Occlusion",
                  color="white", fontsize=12, fontweight="bold", y=1.01)
-
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
@@ -223,6 +215,13 @@ def plot_slot_entropy(frames_np, occ_mask, vanilla_attns, temporal_attns, out_pa
         if len(occ_frames) > 0:
             ax.axvspan(occ_frames[0], occ_frames[-1], alpha=0.15,
                        color="red", label="Occlusion window")
+
+        # Force axis to show full range from 0 so offset disappears
+        all_vals = np.concatenate([v_ent, t_ent])
+        ymin = max(0, all_vals.min() * 0.95)
+        ymax = all_vals.max() * 1.05
+        ax.set_ylim(ymin, ymax)
+        ax.ticklabel_format(style='plain', axis='y')  # no scientific notation
 
         ax.set_title(f"Slot {k+1} Attention Entropy", color="white", fontsize=10)
         ax.set_xlabel("Frame", color="white", fontsize=9)
