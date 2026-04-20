@@ -238,10 +238,11 @@ class SlotAutoencoder(nn.Module):
         rgb, alpha = self.decoder(slots)  # (B, K, 3/1, H, W)
 
         # Softmax masks across slots
-        masks = alpha.softmax(dim=1)      # (B, K, 1, H, W)
-        recon = (rgb * masks).sum(dim=1)  # (B, 3, H, W)
+        masks = alpha.softmax(dim=1)         # (B, K, 1, H, W)
+        slot_recons = rgb * masks            # (B, K, 3, H, W) per-slot reconstruction
+        recon = slot_recons.sum(dim=1)       # (B, 3, H, W) combined
 
-        return recon, masks, slots, attn
+        return recon, masks, slots, attn, slot_recons
 
 
 class TemporalSlotAutoencoder(nn.Module):
@@ -290,6 +291,7 @@ class TemporalSlotAutoencoder(nn.Module):
 
         rgb, alpha = self.decoder(slots)
         masks = alpha.softmax(dim=1)
-        recon = (rgb * masks).sum(dim=1)
+        slot_recons = rgb * masks            # (B, K, 3, H, W) per-slot reconstruction
+        recon = slot_recons.sum(dim=1)       # (B, 3, H, W) combined
 
-        return recon, masks, slots, attn
+        return recon, masks, slots, attn, slot_recons

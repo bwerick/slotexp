@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 *.pth
 Miniconda3-latest-Linux-x86_64.sh
+outputs/shell_samples/*

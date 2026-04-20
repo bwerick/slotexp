@@ -44,30 +44,43 @@ class OcclusionVideoDataset(Dataset):
 # Training Loop
 # ---------------------------------------------------------------------------
 
-def train_vanilla(model, loader, optimizer, device):
+def diversity_loss(masks):
+    """
+    Penalize slots for attending to the same spatial regions.
+    masks: (B, K, 1, H, W)
+    """
+    B, K, _, H, W = masks.shape
+    m = masks.reshape(B, K, H * W)
+    m = m / (m.sum(dim=2, keepdim=True) + 1e-8)
+    sim = torch.bmm(m, m.transpose(1, 2))   # (B, K, K)
+    eye = torch.eye(K, device=masks.device).unsqueeze(0)
+    overlap = (sim * (1 - eye)).sum() / (B * K * (K - 1))
+    return overlap
+
+
+def train_vanilla(model, loader, optimizer, device, div_weight=0.1):
     """Vanilla: each frame treated independently."""
     model.train()
     total_loss = 0.0
     for videos in loader:
-        # videos: (B, T, 3, H, W)
         videos = videos.to(device)
         B, T, C, H, W = videos.shape
-
-        # Flatten time into batch — treat all frames independently
         frames = videos.reshape(B * T, C, H, W)
 
         optimizer.zero_grad()
-        recon, masks, slots, attn = model(frames)
-        loss = nn.functional.mse_loss(recon, frames)
+        recon, masks, slots, attn, _ = model(frames)
+        recon_l = nn.functional.mse_loss(recon, frames)
+        div_l   = diversity_loss(masks)
+        loss = recon_l + div_weight * div_l
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
-        total_loss += loss.item()
+        total_loss += recon_l.item()
 
     return total_loss / len(loader)
 
 
-def train_temporal(model, loader, optimizer, device):
+def train_temporal(model, loader, optimizer, device, div_weight=0.1):
     """Temporal: slots propagate across frames within each video."""
     model.train()
     total_loss = 0.0
@@ -80,18 +93,18 @@ def train_temporal(model, loader, optimizer, device):
         prev_slots = None
 
         for t in range(T):
-            frame = videos[:, t]  # (B, 3, H, W)
-            recon, masks, slots, attn = model(frame, prev_slots=prev_slots)
-            total_seq_loss += nn.functional.mse_loss(recon, frame)
-            # Detach to prevent gradient accumulation across all timesteps
-            # (keeps training stable; can remove detach() for full BPTT)
+            frame = videos[:, t]
+            recon, masks, slots, attn, _ = model(frame, prev_slots=prev_slots)
+            recon_l = nn.functional.mse_loss(recon, frame)
+            div_l   = diversity_loss(masks)
+            total_seq_loss += recon_l + div_weight * div_l
             prev_slots = slots.detach()
 
         loss = total_seq_loss / T
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
-        total_loss += loss.item()
+        total_loss += recon_l.item()
 
     return total_loss / len(loader)
 
@@ -174,9 +187,9 @@ def train_model(model_type, args, device):
         t0 = time.time()
 
         if is_temporal:
-            train_loss = train_temporal(model, train_loader, optimizer, device)
+            train_loss = train_temporal(model, train_loader, optimizer, device, div_weight=0.1)
         else:
-            train_loss = train_vanilla(model, train_loader, optimizer, device)
+            train_loss = train_vanilla(model, train_loader, optimizer, device, div_weight=0.1)
 
         val_loss = evaluate(model, val_loader, device, temporal=is_temporal)
         scheduler.step()

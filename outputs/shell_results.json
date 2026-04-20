@@ -1,0 +1,8 @@
+{
+  "random_baseline": 0.333,
+  "vanilla_visible_acc": 0.946,
+  "vanilla_occluded_acc": 0.422,
+  "temporal_visible_acc": 0.948,
+  "temporal_occluded_acc": 1.0,
+  "occluded_gap_pp": 57.8
+}

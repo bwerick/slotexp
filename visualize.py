@@ -36,7 +36,7 @@ def load_model(model_type, device, args):
     if not ckpt_path.exists():
         raise FileNotFoundError(f"No checkpoint found at {ckpt_path}. Run train.py first.")
 
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     saved_args = ckpt["args"]
 
     resolution = (saved_args["canvas_size"], saved_args["canvas_size"])
@@ -82,10 +82,10 @@ def run_inference(model, frames_np, device, temporal=False):
         frame = frames_t[t:t+1]  # (1, 3, H, W)
 
         if temporal:
-            recon, masks, slots, attn = model(frame, prev_slots=prev_slots)
+            recon, masks, slots, attn, _ = model(frame, prev_slots=prev_slots)
             prev_slots = slots
         else:
-            recon, masks, slots, attn = model(frame)
+            recon, masks, slots, attn, _ = model(frame)
 
         all_masks.append(masks[0].cpu().numpy())   # (K, 1, H, W)
         all_recons.append(recon[0].cpu().numpy())  # (3, H, W)
@@ -216,16 +216,19 @@ def plot_slot_entropy(frames_np, occ_mask, vanilla_attns, temporal_attns, out_pa
             ax.axvspan(occ_frames[0], occ_frames[-1], alpha=0.15,
                        color="red", label="Occlusion window")
 
-        # Force axis to show full range from 0 so offset disappears
+        # Zoom into the actual range of variation — this is where the signal is
         all_vals = np.concatenate([v_ent, t_ent])
-        ymin = max(0, all_vals.min() * 0.95)
-        ymax = all_vals.max() * 1.05
-        ax.set_ylim(ymin, ymax)
-        ax.ticklabel_format(style='plain', axis='y')  # no scientific notation
+        padding = (all_vals.max() - all_vals.min()) * 0.2
+        ax.set_ylim(all_vals.min() - padding, all_vals.max() + padding)
+        # Show differences from mean so offset disappears
+        mean_val = all_vals.mean()
+        ax.yaxis.set_major_formatter(
+            matplotlib.ticker.FuncFormatter(lambda x, _: f"{x - mean_val:+.2e}")
+        )
+        ax.set_ylabel("Entropy deviation (nats)", color="white", fontsize=8)
 
         ax.set_title(f"Slot {k+1} Attention Entropy", color="white", fontsize=10)
         ax.set_xlabel("Frame", color="white", fontsize=9)
-        ax.set_ylabel("Entropy (nats)", color="white", fontsize=9)
         ax.tick_params(colors="white")
         for spine in ax.spines.values():
             spine.set_edgecolor("#444466")
